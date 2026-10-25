@@ -21,10 +21,10 @@ label{display:inline-flex;align-items:center;gap:6px;font-size:13px;color:#aab}
 .track .hd .nm{flex:1;text-align:left;justify-content:flex-start;overflow:hidden;white-space:nowrap;background:#262a38}
 .track .hd button{min-width:44px;padding:0 8px}
 .mute.on{background:#d33;border-color:#d33}.solo.on{background:#ec3;border-color:#ec3;color:#111}
-.grid{display:grid;grid-auto-flow:column;grid-template-rows:1fr;gap:3px;overflow-x:auto;padding-bottom:4px}
-.grid.b8{grid-template-rows:1fr 1fr}
-.bar{display:grid;grid-template-columns:repeat(16,minmax(18px,1fr));gap:3px;min-width:calc(100vw - 40px)}
-.st{height:40px;border-radius:5px;background:#2b2f3d;position:relative;overflow:hidden;touch-action:manipulation}
+.grid{display:flex;flex-direction:column;gap:4px}
+.brow{display:grid;grid-template-columns:repeat(4,1fr);gap:4px}
+.bar{display:grid;grid-template-columns:repeat(16,1fr);gap:1px;min-width:0}
+.st{height:36px;min-width:0;border-radius:2px;background:#2b2f3d;position:relative;overflow:hidden;touch-action:manipulation}
 .st.q{background:#323748}.st.on{background:#ff8a3d}.st.cur{outline:2px solid #fff}
 .st .v{position:absolute;left:0;right:0;bottom:0;background:rgba(0,0,0,.35)}
 .barlbl{font-size:11px;color:#667;margin:2px 0}
@@ -43,3 +43,9 @@ label{display:inline-flex;align-items:center;gap:6px;font-size:13px;color:#aab}
 #kbd{display:flex;gap:2px;overflow-x:auto;margin-top:10px}#kbd button{min-width:40px;height:90px;padding:0;border-radius:6px;background:#ddd;color:#111;flex:none}#kbd button.b{background:#333;color:#eee}
 #projList .pr{display:flex;gap:6px;margin-bottom:6px}#projList .pr span{flex:1;align-self:center}
 #toast{position:fixed;left:50%;bottom:90px;transform:translateX(-50%);background:#333a;padding:8px 14px;border-radius:10px;display:none;z-index:20;backdrop-filter:blur(6px)}
+
+@media(min-width:700px){.bar{gap:2px}.st{border-radius:4px}}
+.edhead{position:sticky;top:-12px;z-index:3;background:#171a22;padding:12px 0 8px;margin-top:-12px}
+.mini{width:100%;height:44px;display:block;background:#0c0e12;border-radius:6px;cursor:pointer}
+.synthrow .nm{color:#ffb07a}
+#rollWrap{overflow-x:hidden}
