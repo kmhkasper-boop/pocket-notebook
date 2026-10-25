@@ -44,7 +44,7 @@ await p.fill('#projName','Test Beat');await p.click('#projSave');await p.waitFor
 await p.click('#projNew');
 console.log('after new',await p.evaluate(()=>PN.S.tracks.length));
 await p.click('#projList .pr button:text("Load")');await p.waitForTimeout(300);console.log('after load',await p.evaluate(()=>[PN.S.tracks.length,PN.S.notes.length,PN.S.name]));
-await p.setInputFiles('#projImport','/tmp/pt/out.json');await p.waitForTimeout(800);console.log('after import',await p.evaluate(()=>[PN.S.tracks.length,Object.keys(PN.samples).length]));
+await p.setInputFiles('#projImport','/tmp/pt/legacy.json');await p.waitForTimeout(800);console.log('after import',await p.evaluate(()=>[PN.S.bars,PN.S.tracks.length,Object.keys(PN.samples).length]));
 await p.setInputFiles('#importAudio','/tmp/pt/out.wav');await p.waitForTimeout(800);console.log('after audio import',await p.evaluate(()=>PN.S.tracks.length));
 console.log('sw',await p.evaluate(()=>navigator.serviceWorker.getRegistration().then(r=>!!r)));
 console.log('ERRORS',errs);await b.close();srv.close();})();
