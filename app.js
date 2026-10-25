@@ -1,11 +1,20 @@
 'use strict';
-const APP_VERSION='v8';
+const APP_VERSION='v9';
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
 const uid=()=>Math.random().toString(36).slice(2,10);
 const toast=m=>{const t=$('#toast');t.textContent=m;t.style.display='block';clearTimeout(toast.t);toast.t=setTimeout(()=>t.style.display='none',2200)};
 const AC=window.AudioContext||window.webkitAudioContext;
 let ctx=null, master=null;
-function audio(){ if(!ctx){ctx=new AC();master=ctx.createGain();master.gain.value=0.9;const comp=ctx.createDynamicsCompressor();master.connect(comp);comp.connect(ctx.destination);} if(ctx.state!=='running')ctx.resume(); return ctx;}
+function audio(){ if(!ctx){ctx=new AC();master=ctx.createGain();master.gain.value=0.9;const comp=ctx.createDynamicsCompressor();master.connect(comp);comp.connect(ctx.destination);ctx.onstatechange=onCtxState;} if(ctx.state!=='running')ctx.resume().catch(()=>{}); return ctx;}
+// --- audio-session robustness (iOS: mic use / calls / backgrounding can suspend or 'interrupt' the context) ---
+let notRunningSince=0;const AUD={recreated:0,resyncs:0,sched:0};
+function resync(force){if(playing&&ctx){const now=ctx.currentTime;if(force===true||nextTime<now+0.01||nextTime>now+1){nextTime=now+0.06;visQ.length=0;AUD.resyncs++;}}}
+function onCtxState(){if(!ctx)return;if(ctx.state==='running'){notRunningSince=0;resync();}else if(ctx.state!=='closed'&&(playing||!document.hidden)){if(!notRunningSince)notRunningSince=performance.now();ctx.resume().catch(()=>{});}}
+function recreateAudio(){try{ctx&&ctx.close()}catch(e){}ctx=null;master=null;synthBus=null;audio();AUD.recreated++;notRunningSince=0;resync(true);}
+function ensureAudio(){if(!ctx)return;if(ctx.state==='running')return;if(!notRunningSince)notRunningSince=performance.now();ctx.resume().then(()=>{if(ctx.state==='running')resync();}).catch(()=>{});
+ if(!document.hidden&&performance.now()-notRunningSince>1500)recreateAudio();}
+document.addEventListener('visibilitychange',()=>{if(!document.hidden&&ctx){ctx.resume().then(resync).catch(()=>{});}});
+addEventListener('pageshow',()=>ctx&&ctx.resume().catch(()=>{}));
 // iOS unlock on first touch
 const unlock=()=>{const c=audio();const b=c.createBuffer(1,1,22050),s=c.createBufferSource();s.buffer=b;s.connect(c.destination);s.start(0);};
 document.addEventListener('pointerdown',unlock,{once:true,capture:true});
@@ -96,7 +105,7 @@ function scheduleStep(c,dest,step,t,synthDest){
 }
 let synthBus=null;
 function sb(){if(!synthBus){synthBus=ctx.createGain();synthBus.connect(master);}synthBus.gain.value=S.synthVol;return synthBus;}
-function tick(){const n=S.len;while(nextTime<ctx.currentTime+0.12){const sw=(curStep%2)?S.swing*stepDur()*0.5:0;scheduleStep(ctx,master,curStep,nextTime+sw,sb());visQ.push({s:curStep,t:nextTime+sw});nextTime+=stepDur();curStep=(curStep+1)%n;}}
+function tick(){if(ctx.state!=='running'){ensureAudio();return;}notRunningSince=0;if(nextTime<ctx.currentTime-0.25)resync();AUD.sched++;const n=S.len;while(nextTime<ctx.currentTime+0.12){const sw=(curStep%2)?S.swing*stepDur()*0.5:0;scheduleStep(ctx,master,curStep,nextTime+sw,sb());visQ.push({s:curStep,t:nextTime+sw});nextTime+=stepDur();curStep=(curStep+1)%n;}}
 async function play(){audio();await renderAll();playing=true;curStep=0;nextTime=ctx.currentTime+0.06;tick();timer=setInterval(tick,25);$('#play').classList.add('on');$('#play').textContent='■';requestAnimationFrame(vis);}
 function stop(){playing=false;clearInterval(timer);visQ.length=0;$('#play').classList.remove('on');$('#play').textContent='▶';$$('.st.cur').forEach(e=>e.classList.remove('cur'));playStep=-1;drawRoll();}
 let playStep=-1;
@@ -166,11 +175,11 @@ $('#rec').onclick=async()=>{const btn=$('#rec');audio();
  const mime=['audio/webm;codecs=opus','audio/mp4','audio/webm','audio/ogg'].find(m=>window.MediaRecorder&&MediaRecorder.isTypeSupported&&MediaRecorder.isTypeSupported(m));
  mr=new MediaRecorder(stream,mime?{mimeType:mime}:undefined);
  mr.ondataavailable=e=>e.data.size&&chunks.push(e.data);
- mr.onstop=async()=>{stream.getTracks().forEach(t=>t.stop());btn.classList.remove('on');btn.textContent='● Rec';
-  try{const ab=await new Blob(chunks,{type:mr.mimeType}).arrayBuffer();const buf=await decode(ab);addSample(buf,'Rec '+(S.tracks.length+1));toast('Recorded '+buf.duration.toFixed(1)+'s');}catch(e){toast('Decode failed: '+e.message);}};
- mr.start(100);btn.classList.add('on');btn.textContent='■ Stop';};
+ mr.onstop=async()=>{stream.getTracks().forEach(t=>t.stop());stream=null;if(ctx){ctx.resume().then(resync).catch(()=>{});setTimeout(()=>{if(ctx&&ctx.state!=='running')ensureAudio();resync();},300);}btn.classList.remove('on');btn.textContent='● Rec';
+  try{const ab=await new Blob(chunks,{type:mr.mimeType}).arrayBuffer();const buf=await decode(ab);{const nt=addSample(buf,'Rec '+(S.tracks.length+1));getRendered(nt);resync();}toast('Recorded '+buf.duration.toFixed(1)+'s');}catch(e){toast('Decode failed: '+e.message);}};
+ mr.start(100);btn.classList.add('on');btn.textContent='■ Stop';if(ctx){ctx.resume().then(resync).catch(()=>{});setTimeout(()=>{ensureAudio();resync();},400);}};
 function decode(ab){audio();return new Promise((res,rej)=>{const p=ctx.decodeAudioData(ab,res,rej);if(p&&p.then)p.then(res,rej);});}
-$('#importAudio').onchange=async e=>{for(const f of e.target.files){try{addSample(await decode(await f.arrayBuffer()),f.name.replace(/\.[^.]+$/,'').slice(0,24));}catch(err){toast('Cannot decode '+f.name);}}e.target.value='';};
+$('#importAudio').onchange=async e=>{for(const f of e.target.files){try{getRendered(addSample(await decode(await f.arrayBuffer()),f.name.replace(/\.[^.]+$/,'').slice(0,24)));}catch(err){toast('Cannot decode '+f.name);}}e.target.value='';};
 
 // ---------- control builder ----------
 function slider(box,label,obj,key,min,max,step,fmt,cb,log){const w=document.createElement('label');w.className='ctl';const v=document.createElement('b');const r=document.createElement('input');r.type='range';
@@ -308,4 +317,4 @@ if('serviceWorker' in navigator&&location.protocol!=='file:'){const hadCtl=!!nav
  navigator.serviceWorker.addEventListener('controllerchange',()=>{if(!hadCtl||reloaded)return;reloaded=true;if(playing||mr&&mr.state==='recording'){toast('Update ready – tap here to reload');$('#toast').onclick=()=>location.reload();$('#toast').style.pointerEvents='auto';clearTimeout(toast.t);}else location.reload();});
  navigator.serviceWorker.register('sw.js',{updateViaCache:'none'}).then(r=>{r.update();document.addEventListener('visibilitychange',()=>{if(!document.hidden)r.update();});}).catch(()=>{});}
 $('#appVer').textContent='Pocket Notebook '+APP_VERSION;
-window.PN={PR,audio,decode,download,toast,fname,get ctx(){return ctx},get master(){return master},get S(){return S},samples,rendered,renderMix,wavBlob,mp3Blob,midiBlob,addSample,play,stop};
+window.PN={PR,AUD,recreateAudio,get playing(){return playing},get nextTime(){return nextTime},audio,decode,download,toast,fname,get ctx(){return ctx},get master(){return master},get S(){return S},samples,rendered,renderMix,wavBlob,mp3Blob,midiBlob,addSample,play,stop};
