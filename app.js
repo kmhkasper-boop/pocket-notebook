@@ -13,7 +13,8 @@ document.addEventListener('touchend',()=>ctx&&ctx.resume(),{capture:true});
 // ---------- state ----------
 const STEPS=128;
 // Loop length options in 16th-note steps. Change this list to offer other lengths (e.g. [4,8,16,32,64]).
-const LENGTHS=[4,8];
+const LENGTHS=[16,32];
+const lenLabel=l=>(l/4)+' beats';
 const defFx=()=>({start:0,end:1,vol:0.8,pitch:0,pan:0,lowcut:20,highcut:20000,bpOn:false,bpFreq:1000,bpQ:1,boomOn:false,boomFreq:55,boomDecay:0.5,boomAmt:0.6,drive:0,revOn:false,revMix:0.35,revGate:0.25,fadeIn:0,fadeOut:0,fadeCurve:'linear'});
 const PRESETS={
  Bass:{wave:'sawtooth',wave2:'square',detune:8,mix2:0.5,octave:-1,cutoff:600,res:6,envAmt:1800,a:0.005,d:0.2,s:0.4,r:0.1,lfoRate:0,lfoAmt:0,vol:0.8},
@@ -22,7 +23,7 @@ const PRESETS={
  Pluck:{wave:'square',wave2:'triangle',detune:4,mix2:0.4,octave:0,cutoff:500,res:8,envAmt:4000,a:0.002,d:0.18,s:0,r:0.15,lfoRate:0,lfoAmt:0,vol:0.7},
  Keys:{wave:'triangle',wave2:'sine',detune:6,mix2:0.5,octave:0,cutoff:3000,res:1,envAmt:1500,a:0.005,d:0.6,s:0.3,r:0.4,lfoRate:4,lfoAmt:60,vol:0.7}};
 let customPresets=JSON.parse(localStorage.getItem('pn-presets')||'{}');
-const freshState=()=>({name:'Untitled',bpm:100,swing:0,len:8,tracks:[],synth:{...PRESETS.Bass},preset:'Bass',notes:[],synthVol:0.7,synthMute:false});
+const freshState=()=>({name:'Untitled',bpm:100,swing:0,len:16,tracks:[],synth:{...PRESETS.Bass},preset:'Bass',notes:[],synthVol:0.7,synthMute:false});
 let S=freshState(); const samples={}; // id -> AudioBuffer
 const rendered={}; // trackId -> {key,buf}
 
@@ -108,7 +109,7 @@ $('#bars').onclick=()=>{const i=LENGTHS.indexOf(S.len),nl=LENGTHS[(i+1)%LENGTHS.
  if(nl>ol){for(const t of S.tracks)if(!t.steps.slice(ol,nl).some(v=>v))for(let k=ol;k<nl;k++)t.steps[k]=t.steps[k%ol];
   if(!S.notes.some(n=>n.s>=ol&&n.s<nl))for(let off=ol;off<nl;off+=ol)S.notes.push(...S.notes.filter(n=>n.s<ol&&n.s+off<nl).map(n=>({...n,s:n.s+off,l:Math.min(n.l,ol)})));}
  if(curStep>=S.len)curStep=0;syncTop();renderTracks();sizeRoll();};
-function syncTop(){$('#bpm').value=S.bpm;$('#swing').value=S.swing;$('#bars').textContent=S.len+' steps';$('#pname').textContent=S.name;$('#synthVol').value=S.synthVol;$('#synthMute').classList.toggle('on',S.synthMute);}
+function syncTop(){$('#bpm').value=S.bpm;$('#swing').value=S.swing;$('#bars').textContent=lenLabel(S.len);$('#pname').textContent=S.name;$('#synthVol').value=S.synthVol;$('#synthMute').classList.toggle('on',S.synthMute);}
 
 // ---------- tracks UI ----------
 function renderTracks(){const box=$('#tracks');box.innerHTML='';$('#emptyHint').style.display=S.tracks.length?'none':'block';
@@ -122,8 +123,8 @@ function renderTracks(){const box=$('#tracks');box.innerHTML='';$('#emptyHint').
   el.querySelector('.dn').onclick=()=>{if(i<S.tracks.length-1){S.tracks.splice(i+1,0,S.tracks.splice(i,1)[0]);renderTracks();}};
   el.querySelector('.del').onclick=()=>{if(confirm('Delete track "'+t.name+'"?')){S.tracks.splice(i,1);delete rendered[t.id];if(!usedIds().includes(t.sampleId))delete samples[t.sampleId];renderTracks();}};
   const g=el.querySelector('.grid');
-  let brow;for(let b=0;b<1;b++){brow=document.createElement('div');brow.className='brow';g.appendChild(brow);const bar=document.createElement('div');bar.className='bar';bar.style.gridTemplateColumns=`repeat(${S.len},1fr)`;
-   for(let k=0;k<S.len;k++){const s=k,st=document.createElement('div');st.className='st'+((k%4===0)?' q':'');st.dataset.s=s;paintStep(st,t.steps[s]);
+  let brow;for(let b=0;b<Math.ceil(S.len/16);b++){brow=document.createElement('div');brow.className='brow';g.appendChild(brow);const bar=document.createElement('div');bar.className='bar';bar.style.gridTemplateColumns=`repeat(${Math.min(16,S.len)},1fr)`;
+   for(let k=0;k<Math.min(16,S.len-b*16);k++){const s=b*16+k,st=document.createElement('div');st.className='st'+((k%4===0)?' q':'')+((k%4===0&&k)?' bt':'');st.dataset.s=s;paintStep(st,t.steps[s]);
     let lp=null,long=false;
     st.onpointerdown=()=>{long=false;lp=setTimeout(()=>{long=true;const v=t.steps[s];t.steps[s]=v>=0.99?0.66:v>=0.6?0.33:1;paintStep(st,t.steps[s]);toast('Velocity '+Math.round(t.steps[s]*100)+'%');},450);};
     st.onpointerup=()=>{clearTimeout(lp);if(!long){t.steps[s]=t.steps[s]>0?0:1;paintStep(st,t.steps[s]);if(t.steps[s]&&!playing)preview(t);}};
@@ -234,7 +235,7 @@ const PR={lo:36,hi:84,cw:26,rh:20,kw:40};const roll=$('#roll');let drawMode=true
 function sizeRoll(){const n=S.len;const ww=$('#rollWrap').clientWidth||innerWidth-20;PR.kw=ww<500?28:40;PR.cw=(ww-PR.kw)/n;roll.style.width=(PR.kw+n*PR.cw)+'px';roll.style.height=((PR.hi-PR.lo+1)*PR.rh)+'px';roll.width=(PR.kw+n*PR.cw)*devicePixelRatio;roll.height=(PR.hi-PR.lo+1)*PR.rh*devicePixelRatio;drawRoll();}
 function drawRoll(){const g=roll.getContext('2d'),d=devicePixelRatio,n=S.len,rows=PR.hi-PR.lo+1;g.setTransform(d,0,0,d,0,0);g.fillStyle='#0c0e12';g.fillRect(0,0,roll.width,roll.height);
  for(let r=0;r<rows;r++){const m=PR.hi-r,blk=[1,3,6,8,10].includes(m%12);g.fillStyle=blk?'#14171e':'#1a1d26';g.fillRect(PR.kw,r*PR.rh,n*PR.cw,PR.rh-1);g.fillStyle=blk?'#333':'#ccc';g.fillRect(0,r*PR.rh,PR.kw-2,PR.rh-1);if(m%12===0){g.fillStyle='#111';g.font='9px sans-serif';g.fillText('C'+(m/12-1),2,r*PR.rh+14);}}
- for(let s=0;s<=n;s++){g.fillStyle=s%16===0?'#667':s%4===0?'#3a3f50':'#242836';g.fillRect(PR.kw+s*PR.cw,0,1,rows*PR.rh);}
+ for(let s=0;s<=n;s++){g.fillStyle=s%16===0?'#99a':s%4===0?'#5a6075':'#242836';g.fillRect(PR.kw+s*PR.cw,0,1,rows*PR.rh);}
  if(playStep>=0){g.fillStyle='rgba(255,255,255,.12)';g.fillRect(PR.kw+playStep*PR.cw,0,PR.cw,rows*PR.rh);}
  for(const nt of S.notes){if(nt.s>=n||nt.p<PR.lo||nt.p>PR.hi)continue;const x=PR.kw+nt.s*PR.cw,y=(PR.hi-nt.p)*PR.rh,w=Math.min(nt.l,n-nt.s)*PR.cw;g.fillStyle='#ff8a3d';g.fillRect(x+1,y+1,w-2,PR.rh-3);g.fillStyle='#b55a20';g.fillRect(x+w-6,y+1,4,PR.rh-3);}}
 (()=>{let op=null;
@@ -287,7 +288,7 @@ const tx=async(mode,fn)=>{const db=await idb();return new Promise((res,rej)=>{co
 const usedIds=()=>[...new Set([...S.tracks.map(t=>t.sampleId),...((S.multi&&S.multi.clips)||[]).map(c=>c.bufId)])];
 const usedSamples=()=>{const o={};for(const t of usedIds().map(id=>({sampleId:id}))){const b=samples[t.sampleId];if(b&&!o[t.sampleId])o[t.sampleId]={sr:b.sampleRate,ch:[...Array(b.numberOfChannels)].map((_,c)=>new Float32Array(b.getChannelData(c)))};}return o;};
 function bufFrom(o){audio();const b=ctx.createBuffer(o.ch.length,o.ch[0].length,o.sr);o.ch.forEach((d,c)=>b.copyToChannel?b.copyToChannel(d,c):b.getChannelData(c).set(d));return b;}
-function loadState(st,smp){stop();S=Object.assign(freshState(),st);if(st.len==null||!LENGTHS.includes(S.len)){S.len=LENGTHS.includes(8)?8:LENGTHS[LENGTHS.length-1];if(S.notes)S.notes=S.notes.filter(n=>n.s<S.len).map(n=>({...n,l:Math.min(n.l,S.len-n.s)}));}delete S.bars;for(const t of S.tracks){t.fx=Object.assign(defFx(),t.fx);if(t.steps.length<STEPS)t.steps=t.steps.concat(new Array(STEPS-t.steps.length).fill(0));}
+function loadState(st,smp){stop();S=Object.assign(freshState(),st);if(st.len==null||!LENGTHS.includes(S.len)){S.len=st.len==null?LENGTHS[LENGTHS.length-1]:(LENGTHS.find(l=>l>=st.len)||LENGTHS[LENGTHS.length-1]);if(S.notes)S.notes=S.notes.filter(n=>n.s<S.len).map(n=>({...n,l:Math.min(n.l,S.len-n.s)}));}delete S.bars;for(const t of S.tracks){t.fx=Object.assign(defFx(),t.fx);if(t.steps.length<STEPS)t.steps=t.steps.concat(new Array(STEPS-t.steps.length).fill(0));}
  for(const k in samples)delete samples[k];for(const k in rendered)delete rendered[k];Object.assign(samples,smp);syncTop();renderTracks();renderSynth();sizeRoll();$('#projName').value=S.name;window.dispatchEvent(new Event('pn-load'));}
 $('#projSave').onclick=async()=>{const n=$('#projName').value.trim()||S.name||'Untitled';S.name=n;syncTop();try{await tx('readwrite',s=>s.put({name:n,state:JSON.parse(JSON.stringify(S)),samples:usedSamples(),saved:Date.now()}));toast('Saved "'+n+'"');listProjects();}catch(e){toast('Save failed: '+e.message);}};
 $('#projNew').onclick=()=>{if(confirm('Start a new empty project? Unsaved changes are lost.'))loadState(freshState(),{});};

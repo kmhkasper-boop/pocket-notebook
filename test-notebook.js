@@ -5,7 +5,7 @@ const p=await c.newPage();p.on('dialog',d=>d.accept());const errs=[];p.on('conso
 await p.goto(U);await p.click('body');L('tabs',await p.$$eval('#tabs button',x=>x.map(e=>e.textContent).join('|')),'len',await p.textContent('#bars'));
 await p.click('#rec');await p.waitForTimeout(1200);await p.click('#rec');await p.waitForSelector('.track');
 await p.setInputFiles('#importAudio','/tmp/pt/w.wav');await p.waitForTimeout(500);
-const sts=await p.$$('.track:first-child .st');L('steps shown',sts.length,'w',Math.round((await sts[0].boundingBox()).width),'h',Math.round((await sts[0].boundingBox()).height));
+const sts=await p.$$('.track:first-child .st');L('steps shown',sts.length,'rows',await p.$$eval('.track:first-child .brow',x=>x.length),'w',Math.round((await sts[0].boundingBox()).width),'h',Math.round((await sts[0].boundingBox()).height));
 for(const i of [0,2,4,6])await sts[i].click();
 await p.click('.track .nm');await p.waitForTimeout(300);await p.click('#edCtl button:has-text("Boom")');await p.click('#edClose');
 await p.click('#tabs button[data-v=roll]');await p.waitForTimeout(200);const wb=await (await p.$('#rollWrap')).boundingBox();const [cw,kw]=await p.evaluate(()=>[PN.PR.cw,PN.PR.kw]);
@@ -19,7 +19,7 @@ const mid=await p.evaluate(async()=>{const m=PN.midiBlob();const u=new Uint8Arra
 const mixLen=await p.evaluate(async()=>(await PN.renderMix(1)).duration.toFixed(3));L('4-step mix sec',mixLen,'midi bytes',mid);
 await p.click('#bars');await p.waitForTimeout(150);L('8-step roll cols',await rollCols());await p.click('#bars');await p.click('#tabs button[data-v=beat]');
 await p.click('#bars');L('toggle ->',await p.textContent('#bars'),await p.$$eval('.track:first-child .st',x=>x.length),'notes',JSON.stringify(await p.evaluate(()=>PN.S.notes.map(n=>[n.s,n.l]))));
-await p.click('#bars');L('toggle ->',await p.textContent('#bars'));
+await p.click('#bars');L('toggle ->',await p.textContent('#bars'),'rows',await p.$$eval('.track:first-child .brow',x=>x.length),'stepW',await p.$eval('.st',e=>e.getBoundingClientRect().width.toFixed(1)));
 await p.click('.track .nm');await p.waitForTimeout(300);
 await p.evaluate(()=>{const ins=[...document.querySelectorAll('#edCtl label.ctl')];const f=n=>ins.find(l=>l.textContent.startsWith(n)).querySelector('input');for(const [n,v] of [['Fade in',300],['Fade out',400]]){const r=f(n);r.value=v;r.dispatchEvent(new Event('input'));}});
 await p.selectOption('#edCtl select',{label:'exp'});await p.waitForTimeout(600);await p.$eval('.sheetbody',e=>e.scrollTop=0);await p.waitForTimeout(100);await (await p.$('#wave')).screenshot({path:`/tmp/pt/fade_${vp[0]}.png`});
