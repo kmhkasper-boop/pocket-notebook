@@ -1,0 +1,54 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<meta name="theme-color" content="#111318"><meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"><meta name="apple-mobile-web-app-title" content="Pocket Notebook">
+<link rel="manifest" href="manifest.webmanifest"><link rel="apple-touch-icon" href="icon-192.png"><link rel="icon" href="icon-192.png">
+<title>Pocket Notebook</title><link rel="stylesheet" href="style.css"></head><body>
+<header id="top">
+ <button id="play" class="big">▶</button>
+ <label>BPM<input id="bpm" type="number" min="40" max="240" value="100"></label>
+ <label>Swing<input id="swing" type="range" min="0" max="0.6" step="0.01" value="0"></label>
+ <button id="bars">4 bars</button>
+ <span id="pname">Untitled</span>
+</header>
+<main>
+<section id="v-beat" class="view on">
+ <div class="row wrap">
+  <select id="inputSel"><option value="">Default mic</option></select>
+  <button id="rec" class="rec">● Rec</button>
+  <label class="btn">Import<input id="importAudio" type="file" accept="audio/*" multiple hidden></label>
+ </div>
+ <div id="tracks"></div>
+ <p class="hint" id="emptyHint">Record or import a sample to create a track. Tap a step to toggle, long-press a step for velocity. Tap a track name to edit the sound.</p>
+</section>
+<section id="v-synth" class="view">
+ <div class="row wrap"><select id="presetSel"></select><button id="presetSave">Save as…</button><button id="presetDel">Delete</button></div>
+ <div id="synthCtl" class="ctlgrid"></div>
+ <div id="kbd"></div>
+</section>
+<section id="v-roll" class="view">
+ <div class="row wrap"><span class="hint">Tap empty to add (drag to set length) · drag note right edge to resize · tap note to delete</span>
+ <label>Synth vol<input id="synthVol" type="range" min="0" max="1" step="0.01" value="0.7"></label><button id="synthMute">Mute</button></div>
+ <div id="rollWrap"><canvas id="roll"></canvas></div>
+</section>
+<section id="v-proj" class="view">
+ <h3>Project</h3>
+ <div class="row wrap"><input id="projName" placeholder="Project name"><button id="projSave">Save</button><button id="projNew">New</button></div>
+ <div id="projList"></div>
+ <h3>Project file</h3>
+ <div class="row wrap"><button id="projExport">Export .json</button><label class="btn">Import .json<input id="projImport" type="file" accept=".json,application/json" hidden></label></div>
+ <h3>Export audio / MIDI</h3>
+ <div class="row wrap"><label>Loops<input id="loops" type="number" min="1" max="8" value="1"></label><button id="expWav">WAV</button><button id="expMp3">MP3</button><button id="expMidi">MIDI</button></div>
+ <p id="expStatus" class="hint"></p>
+</section>
+</main>
+<nav id="tabs"><button data-v="beat" class="on">Beat</button><button data-v="synth">Synth</button><button data-v="roll">Piano roll</button><button data-v="proj">Project</button></nav>
+<div id="editor" class="sheet hidden"><div class="sheetbody">
+ <div class="row"><input id="edName"><button id="edPreview" class="big">▶</button><button id="edClose">Done</button></div>
+ <canvas id="wave"></canvas>
+ <div id="edCtl" class="ctlgrid"></div>
+</div></div>
+<div id="toast"></div>
+<script src="lame.min.js"></script><script src="app.js"></script>
+</body></html>
