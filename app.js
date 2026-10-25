@@ -14,7 +14,7 @@ document.addEventListener('touchend',()=>ctx&&ctx.resume(),{capture:true});
 const STEPS=128;
 // Loop length options in 16th-note steps. Change this list to offer other lengths (e.g. [4,8,16,32,64]).
 const LENGTHS=[4,8];
-const defFx=()=>({start:0,end:1,vol:0.8,pitch:0,pan:0,lowcut:20,highcut:20000,bpOn:false,bpFreq:1000,bpQ:1,boomOn:false,boomFreq:55,boomDecay:0.5,boomAmt:0.6,drive:0,revOn:false,revMix:0.35,revGate:0.25});
+const defFx=()=>({start:0,end:1,vol:0.8,pitch:0,pan:0,lowcut:20,highcut:20000,bpOn:false,bpFreq:1000,bpQ:1,boomOn:false,boomFreq:55,boomDecay:0.5,boomAmt:0.6,drive:0,revOn:false,revMix:0.35,revGate:0.25,fadeIn:0,fadeOut:0,fadeCurve:'linear'});
 const PRESETS={
  Bass:{wave:'sawtooth',wave2:'square',detune:8,mix2:0.5,octave:-1,cutoff:600,res:6,envAmt:1800,a:0.005,d:0.2,s:0.4,r:0.1,lfoRate:0,lfoAmt:0,vol:0.8},
  Lead:{wave:'sawtooth',wave2:'sawtooth',detune:12,mix2:0.6,octave:0,cutoff:2200,res:4,envAmt:2500,a:0.01,d:0.3,s:0.7,r:0.2,lfoRate:5,lfoAmt:300,vol:0.6},
@@ -52,6 +52,9 @@ async function renderFx(src,f){
   o.connect(og);og.connect(sum);o.start(0);o.stop(total);n=sum;}
  if(f.drive>0){const ws=oc.createWaveShaper();ws.curve=distCurve(1+f.drive*40);ws.oversample='4x';const g=oc.createGain();g.gain.value=1/(1+f.drive*0.8);n.connect(ws);ws.connect(g);n=g;}
  const out=oc.createGain();out.gain.value=f.vol;
+ {let fi=(f.fadeIn||0)/1000,fo=(f.fadeOut||0)/1000;if(fi+fo>dur){const k=dur/(fi+fo);fi*=k;fo*=k;}const ex=f.fadeCurve==='exp',N=64,cur=(a,b)=>{const c=new Float32Array(N);for(let i=0;i<N;i++){const x=i/(N-1),y=a+(b-a)*x;c[i]=ex?y*y:y;}return c;};
+  if(fi>0.0005)out.gain.setValueCurveAtTime(cur(0,f.vol),0,fi);if(fo>0.0005)out.gain.setValueCurveAtTime(cur(f.vol,0),Math.max(fi,dur-fo),fo);}
+
  if(f.revOn){const cv=oc.createConvolver();cv.buffer=noiseIR(oc,1.8);const wet=oc.createGain();wet.gain.setValueAtTime(f.revMix,0);wet.gain.setValueAtTime(f.revMix,f.revGate);wet.gain.linearRampToValueAtTime(0,f.revGate+0.03);
   const dry=oc.createGain();dry.gain.value=1-f.revMix*0.5;n.connect(dry);dry.connect(out);n.connect(cv);cv.connect(wet);wet.connect(out);} else n.connect(out);
  const pan=oc.createStereoPanner?oc.createStereoPanner():null; if(pan){pan.pan.value=f.pan;out.connect(pan);pan.connect(oc.destination);}else out.connect(oc.destination);
@@ -87,7 +90,7 @@ const synthOn=()=>anySolo()?!!S.synthSolo:!S.synthMute;
 function playBuf(c,dest,buf,t,vel){const s=c.createBufferSource();s.buffer=buf;const g=c.createGain();g.gain.value=vel;s.connect(g);g.connect(dest);s.start(t);}
 function scheduleStep(c,dest,step,t,synthDest){
  for(const tr of S.tracks){const v=tr.steps[step];if(v>0&&audible(tr)){const r=rendered[tr.id];if(r)playBuf(c,dest,r.buf,t,v);}}
- if(synthOn())for(const n of S.notes)if(n.s===step){const v=synthVoice(c,synthDest,n.p,t,S.synth,n.v||1);v.release(t+n.l*stepDur());}
+ if(synthOn())for(const n of S.notes)if(n.s===step){const v=synthVoice(c,synthDest,n.p,t,S.synth,n.v||1);v.release(t+Math.max(1,Math.min(n.l,S.len-n.s))*stepDur());}
 }
 let synthBus=null;
 function sb(){if(!synthBus){synthBus=ctx.createGain();synthBus.connect(master);}synthBus.gain.value=S.synthVol;return synthBus;}
@@ -131,11 +134,12 @@ function renderTracks(){const box=$('#tracks');box.innerHTML='';$('#emptyHint').
   box.appendChild(el);});
  if(S.notes.some(n=>n.s<S.len))box.appendChild(synthRow());}
 function synthRow(){const el=document.createElement('div');el.className='track synthrow';
- el.innerHTML=`<div class="hd"><button class="nm"></button><button class="mute ${S.synthMute?'on':''}">M</button><button class="solo ${S.synthSolo?'on':''}">S</button></div><canvas class="mini"></canvas>`;
+ el.innerHTML=`<div class="hd"><button class="nm"></button><button class="mute ${S.synthMute?'on':''}">M</button><button class="solo ${S.synthSolo?'on':''}">S</button><button class="del">✕</button></div><canvas class="mini"></canvas>`;
  el.querySelector('.nm').textContent='🎹 Synth · '+(S.preset||'custom');
  const open=()=>$('#tabs button[data-v=roll]').click();el.querySelector('.nm').onclick=open;el.querySelector('.mini').onclick=open;
  el.querySelector('.mute').onclick=e=>{S.synthMute=!S.synthMute;e.target.classList.toggle('on',S.synthMute);syncTop();};
  el.querySelector('.solo').onclick=e=>{S.synthSolo=!S.synthSolo;e.target.classList.toggle('on',S.synthSolo);};
+ el.querySelector('.del').onclick=()=>{if(!confirm('Delete the synth part? This clears all piano roll notes.'))return;S.notes=[];S.synthSolo=false;renderTracks();drawRoll();};
  requestAnimationFrame(()=>drawMini(el.querySelector('.mini')));return el;}
 function drawMini(cv){const d=devicePixelRatio,W=cv.clientWidth,H=cv.clientHeight;if(!W)return;cv.width=W*d;cv.height=H*d;const g=cv.getContext('2d');g.scale(d,d);const n=S.len,vis=S.notes.filter(x=>x.s<n);if(!vis.length)return;
  let lo=Math.min(...vis.map(x=>x.p)),hi=Math.max(...vis.map(x=>x.p));lo-=1;hi+=1;const rh=H/(hi-lo+1),cw=W/n;
@@ -182,6 +186,7 @@ let edT=null,edTimer=null;
 function openEditor(t){edT=t;$('#editor').classList.remove('hidden');$('#edName').value=t.name;const f=t.fx,box=$('#edCtl');box.innerHTML='';
  const ch=()=>{clearTimeout(edTimer);edTimer=setTimeout(async()=>{await getRendered(t);drawWave();},120);};
  h4(box,'Level');slider(box,'Volume',f,'vol',0,1.5,0.01,x=>Math.round(x*100)+'%',ch);slider(box,'Pitch',f,'pitch',-24,24,1,x=>(x>0?'+':'')+x+' st',ch);slider(box,'Pan',f,'pan',-1,1,0.01,x=>x.toFixed(2),ch);
+ h4(box,'Fades');slider(box,'Fade in',f,'fadeIn',0,2000,5,x=>x+' ms',ch);slider(box,'Fade out',f,'fadeOut',0,2000,5,x=>x+' ms',ch);select(box,'Curve',f,'fadeCurve',['linear','exp'],ch);box.appendChild(document.createElement('span'));
  h4(box,'Filters');slider(box,'Low-cut',f,'lowcut',20,5000,1,hz,ch,true);slider(box,'High-cut',f,'highcut',200,20000,1,hz,ch,true);
  toggle(box,'Band-pass',f,'bpOn',ch);box.appendChild(document.createElement('span'));slider(box,'BP freq',f,'bpFreq',60,10000,1,hz,ch,true);slider(box,'BP Q',f,'bpQ',0.3,20,0.1,x=>x.toFixed(1),ch);
  h4(box,'Boom box (808 resonance)');toggle(box,'Boom',f,'boomOn',ch);box.appendChild(document.createElement('span'));slider(box,'Tune',f,'boomFreq',30,200,1,x=>x+' Hz',ch,true);slider(box,'Decay',f,'boomDecay',0.05,2,0.01,x=>x.toFixed(2)+'s',ch);slider(box,'Amount',f,'boomAmt',0,1,0.01,x=>Math.round(x*100)+'%',ch);
@@ -198,6 +203,9 @@ function drawWave(){if(!edT)return;const cv=$('#wave'),W=cv.clientWidth*devicePi
  const r=rendered[edT.id];if(r){const rd=r.buf.getChannelData(0),sx=f.start*W,ex=f.end*W;g.fillStyle='rgba(255,138,61,.85)';const wlen=ex-sx,rl=rd.length*(Math.pow(2,f.pitch/12))/((f.end-f.start)*d.length);
   for(let x=0;x<wlen;x++){const i0=Math.floor(x/wlen*rd.length/rl),i1=Math.floor((x+1)/wlen*rd.length/rl);let mx=0;for(let i=i0;i<i1&&i<rd.length;i+=1+((i1-i0)>>6))mx=Math.max(mx,Math.abs(rd[i]));g.fillRect(sx+x,H/2-mx*H/2,1,Math.max(1,mx*H));}}
  g.fillStyle='rgba(0,0,0,.6)';g.fillRect(0,0,f.start*W,H);g.fillRect(f.end*W,0,W-f.end*W,H);
+ {const sx=f.start*W,ex=f.end*W,rate=Math.pow(2,f.pitch/12),pxs=W/b.duration*rate;const fi=Math.min((f.fadeIn||0)/1000*pxs,ex-sx),fo=Math.min((f.fadeOut||0)/1000*pxs,ex-sx-fi);
+ if(fi>0||fo>0){g.strokeStyle='#ffd23d';g.lineWidth=2*devicePixelRatio;g.beginPath();const ext=f.fadeCurve==='exp';const seg=(x0,x1,a,bb)=>{for(let i=0;i<=20;i++){const u=i/20,y=a+(bb-a)*u,v=ext?y*y:y;g.lineTo(x0+(x1-x0)*u,H-v*(H-4));}};
+  g.moveTo(sx,fi>0?H:4);if(fi>0)seg(sx,sx+fi,0,1);g.lineTo(ex-fo,4);if(fo>0)seg(ex-fo,ex,1,0);g.stroke();}}
  g.fillStyle='#3ddc84';for(const p of[f.start,f.end]){g.fillRect(p*W-2*devicePixelRatio,0,4*devicePixelRatio,H);g.beginPath();g.arc(p*W,H/2,12*devicePixelRatio,0,7);g.fill();}}
 (()=>{const cv=$('#wave');let h=null;
  cv.onpointerdown=e=>{if(!edT)return;const x=e.offsetX/cv.clientWidth,f=edT.fx;h=Math.abs(x-f.start)<Math.abs(x-f.end)?'start':'end';cv.setPointerCapture(e.pointerId);mv(e);};
