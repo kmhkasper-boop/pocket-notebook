@@ -1,4 +1,5 @@
 'use strict';
+const APP_VERSION='v8';
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
 const uid=()=>Math.random().toString(36).slice(2,10);
 const toast=m=>{const t=$('#toast');t.textContent=m;t.style.display='block';clearTimeout(toast.t);toast.t=setTimeout(()=>t.style.display='none',2200)};
@@ -303,5 +304,8 @@ $('#projImport').onchange=async e=>{const f=e.target.files[0];if(!f)return;try{c
 
 // ---------- boot ----------
 syncTop();renderTracks();renderSynth();
-if('serviceWorker' in navigator&&location.protocol!=='file:')navigator.serviceWorker.register('sw.js').catch(()=>{});
+if('serviceWorker' in navigator&&location.protocol!=='file:'){const hadCtl=!!navigator.serviceWorker.controller;let reloaded=false;
+ navigator.serviceWorker.addEventListener('controllerchange',()=>{if(!hadCtl||reloaded)return;reloaded=true;if(playing||mr&&mr.state==='recording'){toast('Update ready – tap here to reload');$('#toast').onclick=()=>location.reload();$('#toast').style.pointerEvents='auto';clearTimeout(toast.t);}else location.reload();});
+ navigator.serviceWorker.register('sw.js',{updateViaCache:'none'}).then(r=>{r.update();document.addEventListener('visibilitychange',()=>{if(!document.hidden)r.update();});}).catch(()=>{});}
+$('#appVer').textContent='Pocket Notebook '+APP_VERSION;
 window.PN={PR,audio,decode,download,toast,fname,get ctx(){return ctx},get master(){return master},get S(){return S},samples,rendered,renderMix,wavBlob,mp3Blob,midiBlob,addSample,play,stop};
