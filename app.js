@@ -12,6 +12,8 @@ document.addEventListener('touchend',()=>ctx&&ctx.resume(),{capture:true});
 
 // ---------- state ----------
 const STEPS=128;
+// Loop length options in 16th-note steps. Change this list to offer other lengths (e.g. [4,8,16,32,64]).
+const LENGTHS=[4,8];
 const defFx=()=>({start:0,end:1,vol:0.8,pitch:0,pan:0,lowcut:20,highcut:20000,bpOn:false,bpFreq:1000,bpQ:1,boomOn:false,boomFreq:55,boomDecay:0.5,boomAmt:0.6,drive:0,revOn:false,revMix:0.35,revGate:0.25});
 const PRESETS={
  Bass:{wave:'sawtooth',wave2:'square',detune:8,mix2:0.5,octave:-1,cutoff:600,res:6,envAmt:1800,a:0.005,d:0.2,s:0.4,r:0.1,lfoRate:0,lfoAmt:0,vol:0.8},
@@ -20,7 +22,7 @@ const PRESETS={
  Pluck:{wave:'square',wave2:'triangle',detune:4,mix2:0.4,octave:0,cutoff:500,res:8,envAmt:4000,a:0.002,d:0.18,s:0,r:0.15,lfoRate:0,lfoAmt:0,vol:0.7},
  Keys:{wave:'triangle',wave2:'sine',detune:6,mix2:0.5,octave:0,cutoff:3000,res:1,envAmt:1500,a:0.005,d:0.6,s:0.3,r:0.4,lfoRate:4,lfoAmt:60,vol:0.7}};
 let customPresets=JSON.parse(localStorage.getItem('pn-presets')||'{}');
-const freshState=()=>({name:'Untitled',bpm:100,swing:0,bars:1,tracks:[],synth:{...PRESETS.Bass},preset:'Bass',notes:[],synthVol:0.7,synthMute:false});
+const freshState=()=>({name:'Untitled',bpm:100,swing:0,len:8,tracks:[],synth:{...PRESETS.Bass},preset:'Bass',notes:[],synthVol:0.7,synthMute:false});
 let S=freshState(); const samples={}; // id -> AudioBuffer
 const rendered={}; // trackId -> {key,buf}
 
@@ -89,7 +91,7 @@ function scheduleStep(c,dest,step,t,synthDest){
 }
 let synthBus=null;
 function sb(){if(!synthBus){synthBus=ctx.createGain();synthBus.connect(master);}synthBus.gain.value=S.synthVol;return synthBus;}
-function tick(){const n=S.bars*16;while(nextTime<ctx.currentTime+0.12){const sw=(curStep%2)?S.swing*stepDur()*0.5:0;scheduleStep(ctx,master,curStep,nextTime+sw,sb());visQ.push({s:curStep,t:nextTime+sw});nextTime+=stepDur();curStep=(curStep+1)%n;}}
+function tick(){const n=S.len;while(nextTime<ctx.currentTime+0.12){const sw=(curStep%2)?S.swing*stepDur()*0.5:0;scheduleStep(ctx,master,curStep,nextTime+sw,sb());visQ.push({s:curStep,t:nextTime+sw});nextTime+=stepDur();curStep=(curStep+1)%n;}}
 async function play(){audio();await renderAll();playing=true;curStep=0;nextTime=ctx.currentTime+0.06;tick();timer=setInterval(tick,25);$('#play').classList.add('on');$('#play').textContent='■';requestAnimationFrame(vis);}
 function stop(){playing=false;clearInterval(timer);visQ.length=0;$('#play').classList.remove('on');$('#play').textContent='▶';$$('.st.cur').forEach(e=>e.classList.remove('cur'));playStep=-1;drawRoll();}
 let playStep=-1;
@@ -99,10 +101,11 @@ function vis(){if(!playing)return;let s=null;while(visQ.length&&visQ[0].t<=ctx.c
 $('#play').onclick=()=>playing?stop():play();
 $('#bpm').onchange=e=>{S.bpm=Math.min(240,Math.max(40,+e.target.value||100));e.target.value=S.bpm;};
 $('#swing').oninput=e=>S.swing=+e.target.value;
-$('#bars').onclick=()=>{if(S.bars===1){S.bars=2;for(const t of S.tracks)if(!t.steps.slice(16,32).some(v=>v))for(let i=0;i<16;i++)t.steps[16+i]=t.steps[i];
-  if(!S.notes.some(n=>n.s>=16&&n.s<32))S.notes.push(...S.notes.filter(n=>n.s<16).map(n=>({...n,s:n.s+16,l:Math.min(n.l,16)})));}else{S.bars=1;}
- if(curStep>=S.bars*16)curStep=0;syncTop();renderTracks();sizeRoll();};
-function syncTop(){$('#bpm').value=S.bpm;$('#swing').value=S.swing;$('#bars').textContent=S.bars===1?'1 bar':S.bars+' bars';$('#pname').textContent=S.name;$('#synthVol').value=S.synthVol;$('#synthMute').classList.toggle('on',S.synthMute);}
+$('#bars').onclick=()=>{const i=LENGTHS.indexOf(S.len),nl=LENGTHS[(i+1)%LENGTHS.length],ol=S.len;S.len=nl;
+ if(nl>ol){for(const t of S.tracks)if(!t.steps.slice(ol,nl).some(v=>v))for(let k=ol;k<nl;k++)t.steps[k]=t.steps[k%ol];
+  if(!S.notes.some(n=>n.s>=ol&&n.s<nl))for(let off=ol;off<nl;off+=ol)S.notes.push(...S.notes.filter(n=>n.s<ol&&n.s+off<nl).map(n=>({...n,s:n.s+off,l:Math.min(n.l,ol)})));}
+ if(curStep>=S.len)curStep=0;syncTop();renderTracks();sizeRoll();};
+function syncTop(){$('#bpm').value=S.bpm;$('#swing').value=S.swing;$('#bars').textContent=S.len+' steps';$('#pname').textContent=S.name;$('#synthVol').value=S.synthVol;$('#synthMute').classList.toggle('on',S.synthMute);}
 
 // ---------- tracks UI ----------
 function renderTracks(){const box=$('#tracks');box.innerHTML='';$('#emptyHint').style.display=S.tracks.length?'none':'block';
@@ -116,8 +119,8 @@ function renderTracks(){const box=$('#tracks');box.innerHTML='';$('#emptyHint').
   el.querySelector('.dn').onclick=()=>{if(i<S.tracks.length-1){S.tracks.splice(i+1,0,S.tracks.splice(i,1)[0]);renderTracks();}};
   el.querySelector('.del').onclick=()=>{if(confirm('Delete track "'+t.name+'"?')){S.tracks.splice(i,1);delete rendered[t.id];if(!usedIds().includes(t.sampleId))delete samples[t.sampleId];renderTracks();}};
   const g=el.querySelector('.grid');
-  let brow;for(let b=0;b<S.bars;b++){if(true){brow=document.createElement('div');brow.className='brow';g.appendChild(brow);}const bar=document.createElement('div');bar.className='bar';
-   for(let k=0;k<16;k++){const s=b*16+k,st=document.createElement('div');st.className='st'+((k%4===0)?' q':'');st.dataset.s=s;paintStep(st,t.steps[s]);
+  let brow;for(let b=0;b<1;b++){brow=document.createElement('div');brow.className='brow';g.appendChild(brow);const bar=document.createElement('div');bar.className='bar';bar.style.gridTemplateColumns=`repeat(${S.len},1fr)`;
+   for(let k=0;k<S.len;k++){const s=k,st=document.createElement('div');st.className='st'+((k%4===0)?' q':'');st.dataset.s=s;paintStep(st,t.steps[s]);
     let lp=null,long=false;
     st.onpointerdown=()=>{long=false;lp=setTimeout(()=>{long=true;const v=t.steps[s];t.steps[s]=v>=0.99?0.66:v>=0.6?0.33:1;paintStep(st,t.steps[s]);toast('Velocity '+Math.round(t.steps[s]*100)+'%');},450);};
     st.onpointerup=()=>{clearTimeout(lp);if(!long){t.steps[s]=t.steps[s]>0?0:1;paintStep(st,t.steps[s]);if(t.steps[s]&&!playing)preview(t);}};
@@ -126,7 +129,7 @@ function renderTracks(){const box=$('#tracks');box.innerHTML='';$('#emptyHint').
     bar.appendChild(st);}
    brow.appendChild(bar);}
   box.appendChild(el);});
- if(S.notes.some(n=>n.s<S.bars*16))box.appendChild(synthRow());}
+ if(S.notes.some(n=>n.s<S.len))box.appendChild(synthRow());}
 function synthRow(){const el=document.createElement('div');el.className='track synthrow';
  el.innerHTML=`<div class="hd"><button class="nm"></button><button class="mute ${S.synthMute?'on':''}">M</button><button class="solo ${S.synthSolo?'on':''}">S</button></div><canvas class="mini"></canvas>`;
  el.querySelector('.nm').textContent='🎹 Synth · '+(S.preset||'custom');
@@ -134,9 +137,9 @@ function synthRow(){const el=document.createElement('div');el.className='track s
  el.querySelector('.mute').onclick=e=>{S.synthMute=!S.synthMute;e.target.classList.toggle('on',S.synthMute);syncTop();};
  el.querySelector('.solo').onclick=e=>{S.synthSolo=!S.synthSolo;e.target.classList.toggle('on',S.synthSolo);};
  requestAnimationFrame(()=>drawMini(el.querySelector('.mini')));return el;}
-function drawMini(cv){const d=devicePixelRatio,W=cv.clientWidth,H=cv.clientHeight;if(!W)return;cv.width=W*d;cv.height=H*d;const g=cv.getContext('2d');g.scale(d,d);const n=S.bars*16,vis=S.notes.filter(x=>x.s<n);if(!vis.length)return;
+function drawMini(cv){const d=devicePixelRatio,W=cv.clientWidth,H=cv.clientHeight;if(!W)return;cv.width=W*d;cv.height=H*d;const g=cv.getContext('2d');g.scale(d,d);const n=S.len,vis=S.notes.filter(x=>x.s<n);if(!vis.length)return;
  let lo=Math.min(...vis.map(x=>x.p)),hi=Math.max(...vis.map(x=>x.p));lo-=1;hi+=1;const rh=H/(hi-lo+1),cw=W/n;
- for(let b=0;b<=S.bars;b++){g.fillStyle=b%4?'#2a2e3c':'#556';g.fillRect(b*16*cw,0,1,H);}
+ for(let b=0;b<=S.len;b+=4){g.fillStyle='#556';g.fillRect(b*cw,0,1,H);}
  g.fillStyle='#ff8a3d';for(const x of vis)g.fillRect(x.s*cw+0.5,(hi-x.p)*rh,Math.max(1.5,Math.min(x.l,n-x.s)*cw-1),Math.max(2,rh-1));}
 function paintStep(st,v){st.classList.toggle('on',v>0);st.innerHTML=v>0&&v<0.99?`<div class="v" style="top:${v*100}%"></div>`:'';}
 async function preview(t){audio();const b=await getRendered(t);if(b)playBuf(ctx,master,b,ctx.currentTime+0.01,1);}
@@ -220,22 +223,22 @@ $('#synthMute').onclick=()=>{S.synthMute=!S.synthMute;syncTop();renderTracks();}
 // ---------- piano roll ----------
 const PR={lo:36,hi:84,cw:26,rh:20,kw:40};const roll=$('#roll');let drawMode=true;
 {const b=document.createElement('button');b.id='rollMode';const p=()=>{b.textContent=drawMode?'✎ Draw mode':'✋ Scroll mode';b.classList.toggle('on',drawMode);roll.style.touchAction=drawMode?'none':'auto';};b.onclick=()=>{drawMode=!drawMode;p();};p();$('#v-roll .row').prepend(b);}
-function sizeRoll(){const n=S.bars*16;const ww=$('#rollWrap').clientWidth||innerWidth-20;PR.kw=ww<500?28:40;PR.cw=(ww-PR.kw)/n;roll.style.width=(PR.kw+n*PR.cw)+'px';roll.style.height=((PR.hi-PR.lo+1)*PR.rh)+'px';roll.width=(PR.kw+n*PR.cw)*devicePixelRatio;roll.height=(PR.hi-PR.lo+1)*PR.rh*devicePixelRatio;drawRoll();}
-function drawRoll(){const g=roll.getContext('2d'),d=devicePixelRatio,n=S.bars*16,rows=PR.hi-PR.lo+1;g.setTransform(d,0,0,d,0,0);g.fillStyle='#0c0e12';g.fillRect(0,0,roll.width,roll.height);
+function sizeRoll(){const n=S.len;const ww=$('#rollWrap').clientWidth||innerWidth-20;PR.kw=ww<500?28:40;PR.cw=(ww-PR.kw)/n;roll.style.width=(PR.kw+n*PR.cw)+'px';roll.style.height=((PR.hi-PR.lo+1)*PR.rh)+'px';roll.width=(PR.kw+n*PR.cw)*devicePixelRatio;roll.height=(PR.hi-PR.lo+1)*PR.rh*devicePixelRatio;drawRoll();}
+function drawRoll(){const g=roll.getContext('2d'),d=devicePixelRatio,n=S.len,rows=PR.hi-PR.lo+1;g.setTransform(d,0,0,d,0,0);g.fillStyle='#0c0e12';g.fillRect(0,0,roll.width,roll.height);
  for(let r=0;r<rows;r++){const m=PR.hi-r,blk=[1,3,6,8,10].includes(m%12);g.fillStyle=blk?'#14171e':'#1a1d26';g.fillRect(PR.kw,r*PR.rh,n*PR.cw,PR.rh-1);g.fillStyle=blk?'#333':'#ccc';g.fillRect(0,r*PR.rh,PR.kw-2,PR.rh-1);if(m%12===0){g.fillStyle='#111';g.font='9px sans-serif';g.fillText('C'+(m/12-1),2,r*PR.rh+14);}}
  for(let s=0;s<=n;s++){g.fillStyle=s%16===0?'#667':s%4===0?'#3a3f50':'#242836';g.fillRect(PR.kw+s*PR.cw,0,1,rows*PR.rh);}
  if(playStep>=0){g.fillStyle='rgba(255,255,255,.12)';g.fillRect(PR.kw+playStep*PR.cw,0,PR.cw,rows*PR.rh);}
  for(const nt of S.notes){if(nt.s>=n||nt.p<PR.lo||nt.p>PR.hi)continue;const x=PR.kw+nt.s*PR.cw,y=(PR.hi-nt.p)*PR.rh,w=Math.min(nt.l,n-nt.s)*PR.cw;g.fillStyle='#ff8a3d';g.fillRect(x+1,y+1,w-2,PR.rh-3);g.fillStyle='#b55a20';g.fillRect(x+w-6,y+1,4,PR.rh-3);}}
 (()=>{let op=null;
  const pos=e=>{const r=roll.getBoundingClientRect();return{s:Math.floor((e.clientX-r.left-PR.kw)/PR.cw),p:PR.hi-Math.floor((e.clientY-r.top)/PR.rh),fx:(e.clientX-r.left-PR.kw)/PR.cw};};
- roll.onpointerdown=e=>{if(!drawMode)return;const q=pos(e);if(q.s<0||q.s>=S.bars*16)return;audio();roll.setPointerCapture(e.pointerId);
+ roll.onpointerdown=e=>{if(!drawMode)return;const q=pos(e);if(q.s<0||q.s>=S.len)return;audio();roll.setPointerCapture(e.pointerId);
   const hit=S.notes.find(n=>n.p===q.p&&q.s>=n.s&&q.s<n.s+n.l);
   if(hit){const edge=q.fx>hit.s+hit.l-0.5;op={n:hit,mode:edge?'resize':'tap',x:e.clientX,y:e.clientY};}
   else{const nn={s:q.s,l:1,p:q.p,v:1};S.notes.push(nn);op={n:nn,mode:'resize',x:e.clientX};const v=synthVoice(ctx,sb(),q.p,ctx.currentTime,S.synth);v.release(ctx.currentTime+0.2);}
   drawRoll();};
  roll.onpointermove=e=>{if(!op)return;const q=pos(e);if(op.mode==='tap'&&Math.hypot(e.clientX-op.x,e.clientY-op.y)>8){op.mode='move';op.off=q.s-op.n.s;}
-  if(op.mode==='resize'){op.n.l=Math.max(1,Math.min(S.bars*16-op.n.s,Math.ceil(q.fx-op.n.s)));drawRoll();}
-  if(op.mode==='move'){op.n.s=Math.max(0,Math.min(S.bars*16-op.n.l,q.s-op.off));op.n.p=Math.max(PR.lo,Math.min(PR.hi,q.p));drawRoll();}};
+  if(op.mode==='resize'){op.n.l=Math.max(1,Math.min(S.len-op.n.s,Math.ceil(q.fx-op.n.s)));drawRoll();}
+  if(op.mode==='move'){op.n.s=Math.max(0,Math.min(S.len-op.n.l,q.s-op.off));op.n.p=Math.max(PR.lo,Math.min(PR.hi,q.p));drawRoll();}};
  roll.onpointerup=()=>{if(op&&op.mode==='tap'){S.notes.splice(S.notes.indexOf(op.n),1);drawRoll();}op=null;};
  roll.onpointercancel=()=>op=null;})();
 
@@ -244,7 +247,7 @@ $$('#tabs button').forEach(b=>b.onclick=()=>{$$('#tabs button').forEach(x=>x.cla
 addEventListener('resize',()=>{if($('#v-roll').classList.contains('on'))sizeRoll();$$('.mini').forEach(drawMini);});
 
 // ---------- export ----------
-async function renderMix(loops){await renderAll();const sr=44100,n=S.bars*16,sd=stepDur(),len=Math.ceil(n*sd*loops*sr);const oc=new OfflineAudioContext(2,len,sr);
+async function renderMix(loops){await renderAll();const sr=44100,n=S.len,sd=stepDur(),len=Math.ceil(n*sd*loops*sr);const oc=new OfflineAudioContext(2,len,sr);
  const m=oc.createGain();m.gain.value=0.9;const comp=oc.createDynamicsCompressor();m.connect(comp);comp.connect(oc.destination);const sbus=oc.createGain();sbus.gain.value=S.synthVol;sbus.connect(m);
  for(let L=0;L<loops;L++)for(let s=0;s<n;s++){const t=(L*n+s)*sd+((s%2)?S.swing*sd*0.5:0);scheduleStep(oc,m,s,t,sbus);}
  return oc.startRendering();}
@@ -255,7 +258,7 @@ const i16=a=>{const r=new Int16Array(a.length);for(let i=0;i<a.length;i++){const
 function mp3Blob(buf){const enc=new lamejs.Mp3Encoder(2,buf.sampleRate,192),L=i16(buf.getChannelData(0)),R=i16(buf.getChannelData(buf.numberOfChannels>1?1:0)),out=[];
  for(let i=0;i<L.length;i+=1152){const b=enc.encodeBuffer(L.subarray(i,i+1152),R.subarray(i,i+1152));if(b.length)out.push(new Uint8Array(b));}const e=enc.flush();if(e.length)out.push(new Uint8Array(e));return new Blob(out,{type:'audio/mpeg'});}
 const DRUMMAP=[36,38,42,46,39,41,45,49,51,37,43,47,48,50,56,54];
-function midiBlob(){const ppq=96,tps=ppq/4,n=S.bars*16;const vlq=x=>{const b=[x&0x7f];while(x>>=7)b.unshift((x&0x7f)|0x80);return b;};
+function midiBlob(){const ppq=96,tps=ppq/4,n=S.len;const vlq=x=>{const b=[x&0x7f];while(x>>=7)b.unshift((x&0x7f)|0x80);return b;};
  const track=(evs,name)=>{evs.sort((a,b)=>a.t-b.t||a.o-b.o);const d=[0,0xff,0x03,name.length,...[...name].map(c=>c.charCodeAt(0)&0x7f)];let last=0;for(const e of evs){d.push(...vlq(e.t-last),...e.b);last=e.t;}d.push(0,0xff,0x2f,0);return[0x4d,0x54,0x72,0x6b,d.length>>>24,(d.length>>16)&255,(d.length>>8)&255,d.length&255,...d];};
  const us=Math.round(60e6/S.bpm);const tempo=track([{t:0,o:0,b:[0xff,0x51,3,us>>16,(us>>8)&255,us&255]},{t:0,o:0,b:[0xff,0x58,4,4,2,24,8]}],'Tempo');
  const drums=[];S.tracks.forEach((tr,i)=>{if(!audible(tr))return;const note=DRUMMAP[i%DRUMMAP.length];for(let s=0;s<n;s++)if(tr.steps[s]>0){const v=Math.max(1,Math.round(tr.steps[s]*127));drums.push({t:s*tps,o:1,b:[0x99,note,v]},{t:s*tps+tps/2,o:0,b:[0x89,note,0]});}});
@@ -276,7 +279,7 @@ const tx=async(mode,fn)=>{const db=await idb();return new Promise((res,rej)=>{co
 const usedIds=()=>[...new Set([...S.tracks.map(t=>t.sampleId),...((S.multi&&S.multi.clips)||[]).map(c=>c.bufId)])];
 const usedSamples=()=>{const o={};for(const t of usedIds().map(id=>({sampleId:id}))){const b=samples[t.sampleId];if(b&&!o[t.sampleId])o[t.sampleId]={sr:b.sampleRate,ch:[...Array(b.numberOfChannels)].map((_,c)=>new Float32Array(b.getChannelData(c)))};}return o;};
 function bufFrom(o){audio();const b=ctx.createBuffer(o.ch.length,o.ch[0].length,o.sr);o.ch.forEach((d,c)=>b.copyToChannel?b.copyToChannel(d,c):b.getChannelData(c).set(d));return b;}
-function loadState(st,smp){stop();S=Object.assign(freshState(),st);if(S.bars>2)S.bars=S.bars>=8?2:1;for(const t of S.tracks){t.fx=Object.assign(defFx(),t.fx);if(t.steps.length<STEPS)t.steps=t.steps.concat(new Array(STEPS-t.steps.length).fill(0));}
+function loadState(st,smp){stop();S=Object.assign(freshState(),st);if(st.len==null||!LENGTHS.includes(S.len)){S.len=LENGTHS.includes(8)?8:LENGTHS[LENGTHS.length-1];if(S.notes)S.notes=S.notes.filter(n=>n.s<S.len).map(n=>({...n,l:Math.min(n.l,S.len-n.s)}));}delete S.bars;for(const t of S.tracks){t.fx=Object.assign(defFx(),t.fx);if(t.steps.length<STEPS)t.steps=t.steps.concat(new Array(STEPS-t.steps.length).fill(0));}
  for(const k in samples)delete samples[k];for(const k in rendered)delete rendered[k];Object.assign(samples,smp);syncTop();renderTracks();renderSynth();sizeRoll();$('#projName').value=S.name;window.dispatchEvent(new Event('pn-load'));}
 $('#projSave').onclick=async()=>{const n=$('#projName').value.trim()||S.name||'Untitled';S.name=n;syncTop();try{await tx('readwrite',s=>s.put({name:n,state:JSON.parse(JSON.stringify(S)),samples:usedSamples(),saved:Date.now()}));toast('Saved "'+n+'"');listProjects();}catch(e){toast('Save failed: '+e.message);}};
 $('#projNew').onclick=()=>{if(confirm('Start a new empty project? Unsaved changes are lost.'))loadState(freshState(),{});};
